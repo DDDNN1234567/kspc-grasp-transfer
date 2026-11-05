@@ -11,8 +11,8 @@ import traceback
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-APP_TITLE = "竞驰管家婆一键资料互传 v1.0"
-APP_VER = "1.0"
+APP_TITLE = "竞驰管家婆一键资料互传 v1.1"
+APP_VER = "1.1"
 
 # 让打包后的 exe 也能 import 同目录模块
 _BASE = os.path.dirname(os.path.abspath(sys.argv[0] if getattr(sys, "frozen", False) else __file__))
@@ -21,6 +21,26 @@ if _BASE not in sys.path:
 
 import gpj_top15_core as core
 import gpj_kspc_adapter as kspc
+
+# 源表 -> 目标表对照（用于导入后行数验证日志）
+SRC_DST_MAP = [
+    ("往来单位", "T_base_wldw_inner"),
+    ("仓库", "t_base_storage_inner"),
+    ("职员", "t_base_employees"),
+    ("商品明细", "t_base_goods_inner"),
+    ("库存结存", "t_base_goodsstock"),
+    ("价格跟踪", "t_base_price"),
+    ("条码", "t_base_GoodsBar"),
+]
+DST_TABLE_OF = {
+    "往来单位": "btype",
+    "仓库": "Stock",
+    "职员": "employee",
+    "商品明细": "ptype",
+    "库存结存": "IniGoodsStocks",
+    "价格跟踪": "xw_P_PriceFollow",
+    "条码": "xw_PtypeBarCode",
+}
 
 
 class App(tk.Tk):
@@ -93,20 +113,21 @@ class App(tk.Tk):
         g.pack(fill="x", padx=10, pady=8)
         vars_ = {}
         ttk.Label(g, text="实例").grid(row=0, column=0, sticky="w")
-        vars_["server"] = tk.StringVar(
-            value="DESKTOP-8P5G8VQ\\SQLEXPRESS" if prefix == "src" else "DESKTOP-8P5G8VQ\\SQLSERVER")
-        ttk.Entry(g, textvariable=vars_["server"], width=30).grid(row=0, column=1, padx=6, sticky="w")
+        vars_["server"] = tk.StringVar(value="")
+        ttk.Entry(g, textvariable=vars_["server"], width=26).grid(row=0, column=1, padx=6, sticky="w")
         ttk.Label(g, text="库名").grid(row=0, column=2, sticky="w", padx=(14, 0))
-        vars_["db"] = tk.StringVar(value="kspcDefault" if prefix == "src" else "HH15new")
-        ttk.Entry(g, textvariable=vars_["db"], width=20).grid(row=0, column=3, padx=6, sticky="w")
+        vars_["db"] = tk.StringVar(value="")
+        cb = ttk.Combobox(g, textvariable=vars_["db"], width=16, state="normal")
+        cb.grid(row=0, column=3, padx=6, sticky="w")
+        vars_["db_combo"] = cb
         ttk.Label(g, text="sa 密码").grid(row=0, column=4, sticky="w", padx=(14, 0))
         vars_["pwd"] = tk.StringVar(value="")
-        ttk.Entry(g, textvariable=vars_["pwd"], width=16, show="*").grid(row=0, column=5, padx=6, sticky="w")
-        btn = ttk.Button(g, text="测试连接", command=lambda p=prefix: self._test_conn(p))
-        btn.grid(row=0, column=6, padx=(14, 4))
+        ttk.Entry(g, textvariable=vars_["pwd"], width=12, show="*").grid(row=0, column=5, padx=6, sticky="w")
+        ttk.Button(g, text="测试连接", command=lambda p=prefix: self._test_conn(p)).grid(row=0, column=6, padx=(10, 2))
+        ttk.Button(g, text="刷新库", command=lambda p=prefix: self._refresh_dbs(p)).grid(row=0, column=7)
         vars_["user"] = tk.StringVar(value="sa")
         lbl = ttk.Label(g, text=hint, foreground="#7A8899")
-        lbl.grid(row=1, column=0, columnspan=7, sticky="w", pady=(6, 0))
+        lbl.grid(row=1, column=0, columnspan=8, sticky="w", pady=(6, 0))
         self.conn_vars[prefix] = vars_
         self.conn_lbl[prefix] = lbl
 
@@ -153,7 +174,7 @@ class App(tk.Tk):
         act.pack(fill="x", pady=(0, 8))
         self.btn_run = ttk.Button(act, text="开始一键导入", style="Run.TButton", command=self._run_import)
         self.btn_run.pack(side="left")
-        self.lbl_mods = ttk.Label(act, text="", foreground="#12355B")
+        self.lbl_mods = tk.Label(act, text="", foreground="#12355B")
         self.lbl_mods.pack(side="left", padx=14)
 
         logbox = ttk.LabelFrame(pad, text="⑤ 运行日志")
@@ -251,6 +272,22 @@ class App(tk.Tk):
                 self._log("连接失败：" + str(e)[:160])
         threading.Thread(target=work, daemon=True).start()
 
+    def _refresh_dbs(self, prefix):
+        def work():
+            try:
+                s, _, u, p = self._conn_of(prefix)
+                if not s:
+                    raise RuntimeError("请先填实例名")
+                dbs = core.list_databases(s, u, p, timeout=8)
+                cb = self.conn_vars[prefix]["db_combo"]
+                cb["values"] = dbs
+                self.conn_lbl[prefix].configure(text="✔ 实例 %s 下共 %d 个库，已下拉可选" % (s, len(dbs)))
+                self._log("已列出实例 %s 下 %d 个库" % (s, len(dbs)))
+            except Exception as e:
+                self.conn_lbl[prefix].configure(text="✘ 列库失败：" + str(e)[:80])
+                self._log("列库失败：" + str(e)[:160])
+        threading.Thread(target=work, daemon=True).start()
+
     # ---------------- 导入 ----------------
     def _run_import(self):
         if self._busy:
@@ -278,6 +315,16 @@ class App(tk.Tk):
             dst = self._open("dst")
             dcur = dst.cursor()
 
+            # 导入前快照源库行数，供结束后对照
+            self._log("快照源库行数…")
+            src_counts = {}
+            for cn_name, st in SRC_DST_MAP:
+                try:
+                    scur.execute("SET NOCOUNT ON; SELECT COUNT(*) FROM %s" % st)
+                    src_counts[cn_name] = scur.fetchone()[0]
+                except Exception:
+                    src_counts[cn_name] = -1
+
             if self.var_auto_bak.get():
                 self._log("备份目标 13 表…")
                 pre = core.backup_tables(dcur)
@@ -300,12 +347,21 @@ class App(tk.Tk):
             else:
                 self._log("✔ 全部成功，无失败记录。")
 
-            self._log("目标库当前行数：")
-            for t in ("btype", "ptype", "Stock", "employee", "IniGoodsStocks",
-                      "xw_P_PtypePrice", "xw_PtypeUnit", "xw_PtypeBarCode"):
+            self._log("源-目标行数对照（验证日志）：")
+            self._log("  %-10s %10s | %-18s %10s" % ("源(竞驰)", "源行数", "目标表", "目标行数"))
+            self._log("  " + "-" * 58)
+            for cn_name, st in SRC_DST_MAP:
+                dt = DST_TABLE_OF[cn_name]
                 try:
-                    dcur.execute("SELECT COUNT(*) FROM %s" % t)
-                    self._log("  %-20s %d" % (t, dcur.fetchone()[0]))
+                    dcur.execute("SET NOCOUNT ON; SELECT COUNT(*) FROM %s" % dt)
+                    dc = dcur.fetchone()[0]
+                except Exception:
+                    dc = -1
+                self._log("  %-10s %10d | %-18s %10d" % (cn_name, src_counts[cn_name], dt, dc))
+            for t in ("xw_P_PtypePrice", "xw_PtypeUnit"):
+                try:
+                    dcur.execute("SET NOCOUNT ON; SELECT COUNT(*) FROM %s" % t)
+                    self._log("  %-10s %10s | %-18s %10d" % ("(扩展)", 0, t, dcur.fetchone()[0]))
                 except Exception:
                     pass
 
@@ -420,7 +476,7 @@ class App(tk.Tk):
         threading.Thread(target=work, daemon=True).start()
 
 
-HELP_TEXT = """竞驰管家婆一键资料互传 v1.0
+HELP_TEXT = """竞驰管家婆一键资料互传 v1.1
 
 【它做什么】
 把竞驰管理通账套里的基本资料，按管家婆辉煌 TOP15 的规则写入管家婆账套：
@@ -434,11 +490,11 @@ p_hh_ImportPtypePriceGZ），编号、父引用、拼音、子级计数都由管
 因此导入后客户端能正常展开树、能开单。
 
 【使用步骤】
-1. 源库：填竞驰所在实例（默认 DESKTOP-8P5G8VQ\\SQLEXPRESS）、库名（默认 kspcDefault）、sa 密码，点“测试连接”。
-   看到“竞驰账套已识别”即正常。
-2. 目标库：填管家婆所在实例与账套库，点“测试连接”。
+1. 源库：填竞驰所在实例（如 DESKTOP-8P5G8VQ\\SQLEXPRESS）、sa 密码，点“刷新库”下拉选择竞驰账套库，
+   或直接手填库名；再点“测试连接”，看到“竞驰账套已识别”即正常。
+2. 目标库：填管家婆所在实例与账套库（同样可用“刷新库”下拉选），点“测试连接”。
 3. 勾选要导的模块（默认全选）；首次建议保持“导入前自动备份目标 13 表”。
-4. 点“开始一键导入”，看日志。
+4. 点“开始一键导入”，看日志。导入结束会自动输出源-目标行数对照表，便于核对。
 5. 导入完成后重开管家婆，进“基本信息”查看单位/商品/仓库/职员。
 
 【会有哪些提示，怎么处理】
