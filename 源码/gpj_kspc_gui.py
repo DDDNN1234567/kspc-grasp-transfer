@@ -11,10 +11,9 @@ import traceback
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-APP_TITLE = "竞驰管家婆一键资料互传 v1.1"
-APP_VER = "1.1"
+APP_TITLE = "竞驰管家婆一键资料互传 v1.2"
+APP_VER = "1.2"
 
-# 让打包后的 exe 也能 import 同目录模块
 _BASE = os.path.dirname(os.path.abspath(sys.argv[0] if getattr(sys, "frozen", False) else __file__))
 if _BASE not in sys.path:
     sys.path.insert(0, _BASE)
@@ -22,7 +21,6 @@ if _BASE not in sys.path:
 import gpj_top15_core as core
 import gpj_kspc_adapter as kspc
 
-# 源表 -> 目标表对照（用于导入后行数验证日志）
 SRC_DST_MAP = [
     ("往来单位", "T_base_wldw_inner"),
     ("仓库", "t_base_storage_inner"),
@@ -55,7 +53,6 @@ class App(tk.Tk):
         self._build_tabs()
         self._build_footer()
 
-    # ---------------- 外观 ----------------
     def _build_style(self):
         st = ttk.Style(self)
         for th in ("vista", "winnative", "clam"):
@@ -105,7 +102,6 @@ class App(tk.Tk):
         self._build_maint(self.tab_maint)
         self._build_help(self.tab_help)
 
-    # ---------------- 连接区 ----------------
     def _conn_frame(self, parent, title, hint, prefix):
         box = ttk.LabelFrame(parent, text=title)
         box.pack(fill="x", pady=(0, 8))
@@ -134,19 +130,15 @@ class App(tk.Tk):
     conn_vars = {}
     conn_lbl = {}
 
-    # ---------------- 一键导入页 ----------------
     def _build_run(self, parent):
         pad = ttk.Frame(parent)
         pad.pack(fill="both", expand=True, padx=10, pady=8)
-
         self._conn_frame(pad, "① 源库 —— 竞驰管理通",
                          "读 T_base_wldw_inner / t_base_storage_inner / t_base_employees / t_base_goods_inner 等", "src")
         self._conn_frame(pad, "② 目标库 —— 管家婆辉煌 TOP15",
                          "写 btype / ptype / Stock / employee / IniGoodsStocks / xw_P_*", "dst")
-
         mid = ttk.Frame(pad)
         mid.pack(fill="x", pady=(2, 8))
-
         modbox = ttk.LabelFrame(mid, text="③ 导入模块")
         modbox.pack(side="left", fill="both", expand=True)
         grid = ttk.Frame(modbox)
@@ -157,7 +149,6 @@ class App(tk.Tk):
             self.mod_vars[m] = v
             ttk.Checkbutton(grid, text=kspc.MODULE_CN.get(m, m), variable=v).grid(
                 row=i // 3, column=i % 3, sticky="w", padx=6, pady=3)
-
         optbox = ttk.LabelFrame(mid, text="④ 选项")
         optbox.pack(side="left", fill="y", padx=(10, 0))
         self.var_incr = tk.BooleanVar(value=False)
@@ -169,14 +160,12 @@ class App(tk.Tk):
         self.var_auto_bak = tk.BooleanVar(value=True)
         ttk.Checkbutton(optbox, text="导入前自动备份目标 13 表",
                         variable=self.var_auto_bak).pack(anchor="w", padx=10, pady=(4, 10))
-
         act = ttk.Frame(pad)
         act.pack(fill="x", pady=(0, 8))
         self.btn_run = ttk.Button(act, text="开始一键导入", style="Run.TButton", command=self._run_import)
         self.btn_run.pack(side="left")
-        self.lbl_mods = tk.Label(act, text="", foreground="#12355B")
+        self.lbl_mods = ttk.Label(act, text="", foreground="#12355B")
         self.lbl_mods.pack(side="left", padx=14)
-
         logbox = ttk.LabelFrame(pad, text="⑤ 运行日志")
         logbox.pack(fill="both", expand=True)
         wrap = ttk.Frame(logbox)
@@ -188,14 +177,11 @@ class App(tk.Tk):
         sb.pack(side="right", fill="y")
         self.txt.pack(side="left", fill="both", expand=True)
 
-    # ---------------- 维护页 ----------------
     def _build_maint(self, parent):
         pad = ttk.Frame(parent)
         pad.pack(fill="both", expand=True, padx=10, pady=10)
-
         self._conn_frame(pad, "目标库 —— 管家婆辉煌 TOP15",
                          "备份 / 回滚 / 清缓存都在这里操作", "maint")
-
         box = ttk.LabelFrame(pad, text="维护操作")
         box.pack(fill="x", pady=(4, 10))
         row = ttk.Frame(box)
@@ -204,7 +190,7 @@ class App(tk.Tk):
         ttk.Button(row, text="校验最近备份", command=self._do_verify).pack(side="left", padx=8)
         ttk.Button(row, text="回滚到最近备份", command=self._do_rollback).pack(side="left")
         ttk.Button(row, text="清理客户端缓存", command=self._do_clearcache).pack(side="left", padx=8)
-
+        ttk.Button(row, text="检查更新", command=self._check_update).pack(side="left", padx=(16, 0))
         lst = ttk.LabelFrame(pad, text="已有备份前缀")
         lst.pack(fill="both", expand=True)
         wrap = ttk.Frame(lst)
@@ -216,7 +202,6 @@ class App(tk.Tk):
         self.lst_pre.pack(side="left", fill="both", expand=True)
         ttk.Button(lst, text="刷新列表", command=self._load_prefixes).pack(anchor="e", padx=10, pady=(0, 8))
 
-    # ---------------- 说明页 ----------------
     def _build_help(self, parent):
         t = tk.Text(parent, wrap="word", font=("Microsoft YaHei", 10),
                     bg="#FFFFFF", fg="#22303C", padx=18, pady=16)
@@ -224,7 +209,6 @@ class App(tk.Tk):
         t.insert("end", HELP_TEXT)
         t.configure(state="disabled")
 
-    # ---------------- 通用 ----------------
     def _log(self, msg):
         self.txt.configure(state="normal")
         self.txt.insert("end", msg.rstrip() + "\n")
@@ -288,7 +272,6 @@ class App(tk.Tk):
                 self._log("列库失败：" + str(e)[:160])
         threading.Thread(target=work, daemon=True).start()
 
-    # ---------------- 导入 ----------------
     def _run_import(self):
         if self._busy:
             messagebox.showwarning("请稍候", "已有任务正在执行。")
@@ -310,12 +293,9 @@ class App(tk.Tk):
             if not kspc.is_kspc_database(scur):
                 raise RuntimeError("源库不是竞驰账套（未找到 T_base_wldw_inner 等核心表）")
             self._log("  竞驰版本 " + " / ".join(kspc.kspc_version(scur)))
-
             self._log("连接目标库（管家婆）…")
             dst = self._open("dst")
             dcur = dst.cursor()
-
-            # 导入前快照源库行数，供结束后对照
             self._log("快照源库行数…")
             src_counts = {}
             for cn_name, st in SRC_DST_MAP:
@@ -324,18 +304,15 @@ class App(tk.Tk):
                     src_counts[cn_name] = scur.fetchone()[0]
                 except Exception:
                     src_counts[cn_name] = -1
-
             if self.var_auto_bak.get():
                 self._log("备份目标 13 表…")
                 pre = core.backup_tables(dcur)
                 self._log("  已备份到 " + pre)
-
             self._log("开始导入，模块：%s" % "、".join(kspc.MODULE_CN.get(m, m) for m in mods))
             stat, errs = kspc.import_from_db(
                 scur, dcur, modules=mods,
                 logcb=lambda s: self._log("  " + str(s)),
                 incremental=self.var_incr.get())
-
             self._log("-" * 62)
             self._log("导入结果：" + kspc.stats_text(stat))
             if errs:
@@ -346,7 +323,6 @@ class App(tk.Tk):
                     self._log("  … 其余 %d 条省略" % (len(errs) - 40))
             else:
                 self._log("✔ 全部成功，无失败记录。")
-
             self._log("源-目标行数对照（验证日志）：")
             self._log("  %-10s %10s | %-18s %10s" % ("源(竞驰)", "源行数", "目标表", "目标行数"))
             self._log("  " + "-" * 58)
@@ -364,13 +340,20 @@ class App(tk.Tk):
                     self._log("  %-10s %10s | %-18s %10d" % ("(扩展)", 0, t, dcur.fetchone()[0]))
                 except Exception:
                     pass
-
             if self.var_cache.get():
                 try:
                     kspc.clear_client_cache()
                     self._log("已清理客户端缓存，请重开管家婆查看。")
                 except Exception as e:
                     self._log("清缓存失败：" + str(e)[:100])
+            self._log("-" * 62)
+            self._log("客户端读取链路验证（xw_GetBasicData）：")
+            try:
+                for cn_name, n, ok in core.verify_client_readable(dcur):
+                    mark = "✔" if ok and n >= 0 else "✘"
+                    self._log("  %s %-10s %d 行" % (mark, cn_name, n))
+            except Exception as e:
+                self._log("  验证失败：" + str(e)[:120])
             self._log("=" * 62)
         except Exception as e:
             self._log("✘ 任务中断：" + str(e))
@@ -384,7 +367,6 @@ class App(tk.Tk):
             self._set_busy(False)
             self.lbl_state.configure(text="就绪")
 
-    # ---------------- 维护 ----------------
     def _do_backup(self):
         def work():
             try:
@@ -410,7 +392,9 @@ class App(tk.Tk):
                 ok, rows = core.verify_backup(cur, pre)
                 self._log("备份完整性：%s  前缀：%s" % (ok, pre))
                 for r in rows:
-                    self._log("  %-22s %s  备份%s  当前%s" % tuple(r))
+                    t, status, bn, cn, cs_ok = r
+                    cs_mark = "[内容同]" if cs_ok else "[内容变]"
+                    self._log("  %-22s %-14s 备份=%d 当前=%d %s" % (t, status, bn, cn, cs_mark))
                 cn.close()
             except Exception as e:
                 self._log("✘ 校验失败：" + str(e)[:160])
@@ -459,6 +443,31 @@ class App(tk.Tk):
         except Exception as e:
             self._log("✘ 清缓存失败：" + str(e)[:120])
 
+    def _check_update(self):
+        def work():
+            try:
+                import urllib.request, json
+                url = "https://api.github.com/repos/DDDNN1234567/kspc-grasp-transfer/releases/latest"
+                req = urllib.request.Request(url, headers={
+                    "User-Agent": "kspc-gui/" + APP_VER,
+                    "Accept": "application/vnd.github+json"})
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    data = json.loads(r.read().decode("utf-8"))
+                tag = data.get("tag_name", "?")
+                pub = data.get("published_at", "")[:10]
+                body = (data.get("body") or "").strip().splitlines()
+                first = body[0] if body else ""
+                latest = tag.lstrip("vV")
+                if latest > APP_VER:
+                    self._log("★ 发现新版本：当前 v%s，GitHub 最新 %s（%s）" % (APP_VER, tag, pub))
+                    self._log("  更新摘要：%s" % first[:120])
+                    self._log("  请到 GitHub Release 页下载新版 exe。")
+                else:
+                    self._log("✔ 当前 v%s 已是最新（GitHub 最新 %s）" % (APP_VER, tag))
+            except Exception as e:
+                self._log("✘ 检查更新失败：" + str(e)[:160])
+        threading.Thread(target=work, daemon=True).start()
+
     def _load_prefixes(self):
         def work():
             try:
@@ -476,44 +485,27 @@ class App(tk.Tk):
         threading.Thread(target=work, daemon=True).start()
 
 
-HELP_TEXT = """竞驰管家婆一键资料互传 v1.1
+HELP_TEXT = """竞驰管家婆一键资料互传 v1.2
 
 【它做什么】
 把竞驰管理通账套里的基本资料，按管家婆辉煌 TOP15 的规则写入管家婆账套：
 往来单位、仓库、职员、商品（含分类与多单位）、库存结存、客户价格跟踪、条码、
 以及管家婆官方过程覆盖不到的预设售价4/5、会员价、特价、第3/4 辅助单位。
 
-【为什么不直接写表】
-管家婆的编号必须级联（一级 5 位、二级 10 位…），且 soncount 等字段被客户端树读取。
-本工具全部走管家婆官方存储过程（p_hh_BasicInsertB/K/P/E、p_hh_ModInitGoodsStocks、
-p_hh_ImportPtypePriceGZ），编号、父引用、拼音、子级计数都由管家婆自己维护，
-因此导入后客户端能正常展开树、能开单。
-
 【使用步骤】
-1. 源库：填竞驰所在实例（如 DESKTOP-8P5G8VQ\\SQLEXPRESS）、sa 密码，点“刷新库”下拉选择竞驰账套库，
-   或直接手填库名；再点“测试连接”，看到“竞驰账套已识别”即正常。
-2. 目标库：填管家婆所在实例与账套库（同样可用“刷新库”下拉选），点“测试连接”。
+1. 源库：填竞驰所在实例（如 DESKTOP-8P5G8VQ\SQLEXPRESS）、sa 密码，点“刷新库”下拉选择竞驰账套库。
+2. 目标库：填管家婆所在实例与账套库，点“测试连接”。
 3. 勾选要导的模块（默认全选）；首次建议保持“导入前自动备份目标 13 表”。
-4. 点“开始一键导入”，看日志。导入结束会自动输出源-目标行数对照表，便于核对。
-5. 导入完成后重开管家婆，进“基本信息”查看单位/商品/仓库/职员。
+4. 点“开始一键导入”，看日志。导入结束会自动输出源-目标行数对照表。
+5. 导入完成后重开管家婆，进“基本信息”查看。
 
-【会有哪些提示，怎么处理】
-· 失败 0 条 = 全部成功。
-· 出现“rc=-13 系统已经开账…”：工具已自动临时反开账并在结束后恢复；若仍出现，说明目标库有并发会话，关闭管家婆再导。
-· 出现 rc=-7 仓库类：竞驰仓库已平铺处理；若源库仓库数据本身异常，请核对。
-· 出现 rc=-28 辅助单位：源商品单位/换算率不匹配，工具已按“同进同退”清洗；若仍报，请检查该商品 unit2 与 unitrelation。
-
-【增量模式】
-勾选后，目标库已存在相同自定义编号的资料会跳过，只补新增部分。适合第二次及以后的同步。
-
-【回滚】
-“维护”页列出所有 _impbak_ 备份前缀，选中后点“回滚到最近备份”（不选则用最新一个）。
-回滚前会自动校验 13 表是否齐全，不全则中止、不改数据。
+【维护页】
+备份 13 表 / 校验最近备份（含内容 CHECKSUM 对比）/ 回滚 / 清缓存 / 检查更新。
 
 【限制】
-· 竞驰的仓库层级会被拍平（管家婆库存不能挂类仓库）。
+· 竞驰的仓库层级会被拍平。
 · 竞驰的品牌、部门、季节、辅助属性暂不导入。
-· 期初应收应付按竞驰的 *00 字段导入；运行余额（ystotal 等）属历史发生额，不导。
+· 期初应收应付按竞驰的 *00 字段导入；运行余额不导。
 """
 
 
